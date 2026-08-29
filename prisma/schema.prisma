@@ -1,13 +1,44 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
-generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
-}
-
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Sacado {
+  CHRIS
+  VANIA
+}
+
+enum StatusTransferencia {
+  PENDENTE
+  CONCLUIDO
+}
+
+model SemanaForecast {
+  id                String       @id @default(uuid())
+  semanaAno         Int          // Ex: 31, 32, 33
+  semanaMes         Int          // Ex: 1, 2, 3, 4
+  mes               String       // Ex: "Agosto"
+  metaRendimento    Float        @default(0.0)
+  metaAcumulada     Float        @default(0.0)
+  resultadoRealizado Float       @default(0.0)
+  devidoChris       Float        @default(0.0)
+  devidoVania       Float        @default(0.0)
+  createdAt         DateTime     @default(now())
+  retiradas         Retirada[]
+}
+
+model Retirada {
+  id                String              @id @default(uuid())
+  semanaId          String
+  semana            SemanaForecast      @relation(fields: [semanaId], references: [id])
+  sacado            Sacado
+  valorDevido       Float               // Puxado do Forecast no momento do lançamento
+  valorRetirado     Float
+  dataRetirada      DateTime?
+  status            StatusTransferencia @default(PENDENTE)
+  createdAt         DateTime            @default(now())
 }
