@@ -1,6 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-29',
+  pages: true, // Força a ativação do roteador do Nuxt
   
   // Módulos essenciais do projeto
   modules: [
