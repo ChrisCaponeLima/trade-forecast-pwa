@@ -1,10 +1,51 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model RelatPerformance {
+  ativo             String   @db.VarChar(20)
+  abertura          DateTime
+  fechamento        DateTime
+  qtdCompra         Int      @default(0)
+  qtdVenda          Int      @default(0)
+  resIntervaloBruto Decimal  @default(0.00) @db.Decimal(15, 2)
+  lotes             Int      @default(0) @map("lotes")
+  criadoEm          DateTime @default(now()) @map("criadoEm") @db.Timestamp(6)
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @map("id") @db.Uuid
+
+  @@index([abertura], map: "idx_relat_performance_abertura")
+  @@index([ativo], map: "idx_relat_performance_ativo")
+  @@map("RelatPerformance")
+}
+
+model Retirada {
+  id             String              @id @default(dbgenerated("(uuid_generate_v4())::text"))
+  semanaId       String
+  sacado         Sacado
+  valorDevido    Float
+  valorRetirado  Float
+  dataRetirada   DateTime?
+  status         StatusTransferencia @default(PENDENTE)
+  createdAt      DateTime            @default(now())
+  SemanaForecast SemanaForecast      @relation(fields: [semanaId], references: [id])
+}
+
+model SemanaForecast {
+  id                 String     @id @default(dbgenerated("(uuid_generate_v4())::text"))
+  semanaAno          Int
+  semanaMes          Int
+  mes                String
+  metaRendimento     Float      @default(0.0)
+  metaAcumulada      Float      @default(0.0)
+  resultadoRealizado Float      @default(0.0)
+  devidoChris        Float      @default(0.0)
+  devidoVania        Float      @default(0.0)
+  createdAt          DateTime   @default(now())
+  Retirada           Retirada[]
 }
 
 enum Sacado {
@@ -15,30 +56,4 @@ enum Sacado {
 enum StatusTransferencia {
   PENDENTE
   CONCLUIDO
-}
-
-model SemanaForecast {
-  id                String       @id @default(uuid())
-  semanaAno         Int          // Ex: 31, 32, 33
-  semanaMes         Int          // Ex: 1, 2, 3, 4
-  mes               String       // Ex: "Agosto"
-  metaRendimento    Float        @default(0.0)
-  metaAcumulada     Float        @default(0.0)
-  resultadoRealizado Float       @default(0.0)
-  devidoChris       Float        @default(0.0)
-  devidoVania       Float        @default(0.0)
-  createdAt         DateTime     @default(now())
-  retiradas         Retirada[]
-}
-
-model Retirada {
-  id                String              @id @default(uuid())
-  semanaId          String
-  semana            SemanaForecast      @relation(fields: [semanaId], references: [id])
-  sacado            Sacado
-  valorDevido       Float               // Puxado do Forecast no momento do lançamento
-  valorRetirado     Float
-  dataRetirada      DateTime?
-  status            StatusTransferencia @default(PENDENTE)
-  createdAt         DateTime            @default(now())
 }
