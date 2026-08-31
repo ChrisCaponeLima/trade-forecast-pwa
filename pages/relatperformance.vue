@@ -5,12 +5,31 @@ definePageMeta({
   layout: 'default'
 })
 
-// Busca os dados diretamente da API conectada ao Neon
+// Estados Reativos para os Filtros
+const filtroAtivo = ref('')
+const filtroDataInicio = ref('')
+const filtroDataFim = ref('')
+
+// Transforma os estados em query reativa para o useFetch
+const queryParams = computed(() => {
+  const params: Record<string, string> = {}
+  if (filtroAtivo.value) params.ativo = filtroAtivo.value
+  if (filtroDataInicio.value) params.dataInicio = filtroDataInicio.value
+  if (filtroDataFim.value) params.dataFim = filtroDataFim.value
+  return params
+})
+
 const { data: operacoes, pending, error, refresh } = await useFetch<OperacaoPerformance[]>('/api/relatperformance', {
+  query: queryParams,
   default: () => []
 })
 
-const totalTaxas = ref<number>(0.00)
+// Limpar Filtros
+const limparFiltros = () => {
+  filtroAtivo.value = ''
+  filtroDataInicio.value = ''
+  filtroDataFim.value = ''
+}
 
 // Formatações
 const formatCurrency = (val: number) => {
@@ -27,8 +46,7 @@ const formatDate = (dateString: string | Date) => {
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
+    minute: '2-digit'
   })
 }
 
@@ -38,11 +56,15 @@ const totalResultadoBruto = computed(() => {
 })
 
 const totalContratos = computed(() => {
-  return operacoes.value.reduce((acc, op) => acc + op.qtdCompra, 0)
+  return operacoes.value.reduce((acc, op) => acc + (op.qtdCompra + op.qtdVenda), 0)
 })
 
-const mediaPorOperacao = computed(() => {
-  return operacoes.value.length ? totalResultadoBruto.value / operacoes.value.length : 0
+const totalTaxas = computed(() => {
+  return operacoes.value.reduce((acc, op) => acc + (op.taxaOperacao || 0), 0)
+})
+
+const totalResultadoLiquido = computed(() => {
+  return totalResultadoBruto.value - totalTaxas.value
 })
 </script>
 
@@ -52,7 +74,7 @@ const mediaPorOperacao = computed(() => {
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
       <div>
         <h2 class="text-xl md:text-2xl font-light text-[#556b2f]">Relatório de Performance</h2>
-        <p class="text-xs text-slate-500">Execuções e resultados operacionais carregados do Neon</p>
+        <p class="text-xs text-slate-500">Execuções, taxas de emolumentos e resultados líquidos operacionais</p>
       </div>
       <div class="flex items-center gap-3">
         <button 
@@ -67,33 +89,83 @@ const mediaPorOperacao = computed(() => {
       </div>
     </div>
 
-    <!-- Cards de Resumo -->
+    <!-- Painel de Filtros -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+      <div class="flex justify-between items-center">
+        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Filtros de Busca</h3>
+        <button 
+          v-if="filtroAtivo || filtroDataInicio || filtroDataFim" 
+          @click="limparFiltros" 
+          class="text-xs text-rose-600 hover:underline font-medium"
+        >
+          Limpar Filtros
+        </button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <!-- Filtro Ativo -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-600 uppercase mb-1">Código do Ativo</label>
+          <input 
+            v-model="filtroAtivo" 
+            type="text" 
+            placeholder="Ex: WIN, WDO, WINQ24" 
+            class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md focus:outline-none focus:border-slate-500 uppercase font-mono"
+          />
+        </div>
+
+        <!-- Filtro Data Início -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-600 uppercase mb-1">Data Inicial</label>
+          <input 
+            v-model="filtroDataInicio" 
+            type="date" 
+            class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md focus:outline-none focus:border-slate-500"
+          />
+        </div>
+
+        <!-- Filtro Data Fim -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-600 uppercase mb-1">Data Final</label>
+          <input 
+            v-model="filtroDataFim" 
+            type="date" 
+            class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md focus:outline-none focus:border-slate-500"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Cards de Resumo Reordenados -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
+      <!-- 1. Resultado Líquido -->
       <div class="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-        <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Res. Bruto Total</span>
+        <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Resultado Líquido</span>
+        <span :class="['text-base sm:text-lg md:text-xl lg:text-2xl font-bold mt-1 truncate', totalResultadoLiquido >= 0 ? 'text-emerald-700' : 'text-rose-600']">
+          {{ formatCurrency(totalResultadoLiquido) }}
+        </span>
+      </div>
+
+      <!-- 2. Resultado Bruto -->
+      <div class="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Resultado Bruto</span>
         <span :class="['text-base sm:text-lg md:text-xl lg:text-2xl font-bold mt-1 truncate', totalResultadoBruto >= 0 ? 'text-emerald-700' : 'text-rose-600']">
           {{ formatCurrency(totalResultadoBruto) }}
         </span>
       </div>
 
+      <!-- 3. Número de Contratos -->
       <div class="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-        <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Contratos</span>
+        <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Número de Contratos</span>
         <span class="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-slate-800 mt-1 truncate">
           {{ totalContratos }}
         </span>
       </div>
 
+      <!-- 4. Taxas -->
       <div class="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
         <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Taxas</span>
         <span class="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-rose-700 mt-1 truncate">
           {{ formatCurrency(totalTaxas) }}
-        </span>
-      </div>
-
-      <div class="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-        <span class="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Média / Operação</span>
-        <span :class="['text-base sm:text-lg md:text-xl lg:text-2xl font-bold mt-1 truncate', mediaPorOperacao >= 0 ? 'text-emerald-700' : 'text-rose-600']">
-          {{ formatCurrency(mediaPorOperacao) }}
         </span>
       </div>
     </div>
@@ -103,16 +175,15 @@ const mediaPorOperacao = computed(() => {
       <div class="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
         <div class="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Detalhamento de Trades</h3>
-          <span class="text-xs text-slate-500 font-medium">{{ operacoes.length }} registros no banco</span>
+          <span class="text-xs text-slate-500 font-medium">{{ operacoes.length }} registros encontrados</span>
         </div>
 
-        <!-- Feedback de Carregamento / Erro -->
         <div v-if="pending" class="p-8 text-center text-slate-500 text-xs">
-          Carregando dados do banco...
+          Filtrando dados...
         </div>
 
         <div v-else-if="error" class="p-8 text-center text-rose-600 text-xs font-semibold">
-          Erro ao conectar com o Neon. Verifique suas credenciais do banco.
+          Erro ao conectar com o banco Neon.
         </div>
 
         <div v-else class="overflow-x-auto">
@@ -122,10 +193,11 @@ const mediaPorOperacao = computed(() => {
                 <th class="p-3 md:p-4">Ativo</th>
                 <th class="p-3 md:p-4">Abertura</th>
                 <th class="p-3 md:p-4">Fechamento</th>
-                <th class="p-3 md:p-4 text-center">Qtd Compra</th>
-                <th class="p-3 md:p-4 text-center">Qtd Venda</th>
-                <th class="p-3 md:p-4 text-center">Lotes</th>
-                <th class="p-3 md:p-4 text-right">Res. Intervalo Bruto</th>
+                <th class="p-3 md:p-4 text-center">Compra</th>
+                <th class="p-3 md:p-4 text-center">Venda</th>
+                <th class="p-3 md:p-4 text-right">Res. Bruto</th>
+                <th class="p-3 md:p-4 text-right">Taxas</th>
+                <th class="p-3 md:p-4 text-right">Res. Líquido</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-slate-800">
@@ -143,13 +215,18 @@ const mediaPorOperacao = computed(() => {
                 </td>
                 <td class="p-3 md:p-4 text-center font-medium whitespace-nowrap">{{ op.qtdCompra }}</td>
                 <td class="p-3 md:p-4 text-center font-medium whitespace-nowrap">{{ op.qtdVenda }}</td>
-                <td class="p-3 md:p-4 text-center font-medium text-slate-600 whitespace-nowrap">{{ op.lotes }}</td>
-                <td :class="['p-3 md:p-4 text-right font-bold whitespace-nowrap', Number(op.resIntervaloBruto) >= 0 ? 'text-emerald-700' : 'text-rose-600']">
-                  {{ formatCurrency(Number(op.resIntervaloBruto)) }}
+                <td class="p-3 md:p-4 text-right font-semibold text-slate-700 whitespace-nowrap">
+                  {{ formatCurrency(op.resIntervaloBruto) }}
+                </td>
+                <td class="p-3 md:p-4 text-right font-medium text-rose-600 whitespace-nowrap">
+                  -{{ formatCurrency(op.taxaOperacao) }}
+                </td>
+                <td :class="['p-3 md:p-4 text-right font-bold whitespace-nowrap', op.resIntervaloLiquido >= 0 ? 'text-emerald-700' : 'text-rose-600']">
+                  {{ formatCurrency(op.resIntervaloLiquido) }}
                 </td>
               </tr>
               <tr v-if="operacoes.length === 0">
-                <td colspan="7" class="p-6 text-center text-slate-400">Nenhum registro encontrado.</td>
+                <td colspan="8" class="p-6 text-center text-slate-400">Nenhum registro encontrado para os filtros selecionados.</td>
               </tr>
             </tbody>
           </table>

@@ -22,30 +22,72 @@ model RelatPerformance {
   @@map("RelatPerformance")
 }
 
-model Retirada {
-  id             String              @id @default(dbgenerated("(uuid_generate_v4())::text"))
-  semanaId       String
-  sacado         Sacado
-  valorDevido    Float
-  valorRetirado  Float
-  dataRetirada   DateTime?
-  status         StatusTransferencia @default(PENDENTE)
-  createdAt      DateTime            @default(now())
-  SemanaForecast SemanaForecast      @relation(fields: [semanaId], references: [id])
-}
-
 model SemanaForecast {
-  id                 String     @id @default(dbgenerated("(uuid_generate_v4())::text"))
+  id                 String   @id @default(dbgenerated("(uuid_generate_v4())::text"))
   semanaAno          Int
   semanaMes          Int
   mes                String
-  metaRendimento     Float      @default(0.0)
-  metaAcumulada      Float      @default(0.0)
-  resultadoRealizado Float      @default(0.0)
-  devidoChris        Float      @default(0.0)
-  devidoVania        Float      @default(0.0)
-  createdAt          DateTime   @default(now())
-  Retirada           Retirada[]
+  metaRendimento     Float    @default(0.0)
+  metaAcumulada      Float    @default(0.0)
+  resultadoRealizado Float    @default(0.0)
+  devidoChris        Float    @default(0.0)
+  devidoVania        Float    @default(0.0)
+  createdAt          DateTime @default(now())
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model aportes {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  usuario_id    String?   @db.Uuid
+  data_aporte   DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valor         Decimal   @db.Decimal(15, 2)
+  observacoes   String?
+  origem        String?   @db.VarChar(100)
+  criado_em     DateTime  @default(now()) @db.Timestamptz(6)
+  atualizado_em DateTime  @default(now()) @db.Timestamptz(6)
+  usuarios      usuarios? @relation(fields: [usuario_id], references: [id], onUpdate: NoAction)
+
+  @@index([data_aporte], map: "idx_aportes_data")
+  @@index([usuario_id], map: "idx_aportes_usuario")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model retiradas {
+  id                   String                    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  semana_ref           String                    @db.VarChar(50)
+  sacado_id            String?                   @db.Uuid
+  sacado_nome          String                    @db.VarChar(100)
+  valor_devido         Decimal                   @default(0.00) @db.Decimal(15, 2)
+  valor_retirada       Decimal                   @default(0.00) @db.Decimal(15, 2)
+  data_retirada        DateTime?                 @db.Date
+  status_transferencia status_transferencia_enum @default(PENDENTE)
+  observacoes          String?
+  comprovante_url      String?                   @db.VarChar(500)
+  criado_em            DateTime                  @default(now()) @db.Timestamptz(6)
+  atualizado_em        DateTime                  @default(now()) @db.Timestamptz(6)
+  usuarios             usuarios?                 @relation(fields: [sacado_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([sacado_id], map: "idx_retiradas_sacado")
+  @@index([semana_ref], map: "idx_retiradas_semana_ref")
+  @@index([status_transferencia], map: "idx_retiradas_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model usuarios {
+  id            String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome          String      @db.VarChar(100)
+  sobrenome     String      @db.VarChar(100)
+  login         String      @unique @db.VarChar(50)
+  email         String      @unique @db.VarChar(255)
+  senha_hash    String      @db.VarChar(255)
+  ativo         Boolean     @default(true)
+  criado_em     DateTime    @default(now()) @db.Timestamptz(6)
+  atualizado_em DateTime    @default(now()) @db.Timestamptz(6)
+  aportes       aportes[]
+  retiradas     retiradas[]
+
+  @@index([email], map: "idx_usuarios_email")
+  @@index([login], map: "idx_usuarios_login")
 }
 
 enum Sacado {
@@ -56,4 +98,11 @@ enum Sacado {
 enum StatusTransferencia {
   PENDENTE
   CONCLUIDO
+}
+
+enum status_transferencia_enum {
+  PENDENTE
+  EM_PROCESSAMENTO
+  CONCLUIDO
+  CANCELADO
 }

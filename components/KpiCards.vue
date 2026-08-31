@@ -1,5 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import type { OperacaoPerformance } from '~/types/performance'
+
+interface RetiradaDB {
+  id: string
+  valorRetirada: number | string
+  statusTransferencia: string
+  created_at?: string
+}
+
+interface AporteDB {
+  id: string
+  data_aporte: string | Date
+  valor: number | string
+}
 
 interface KpiItem {
   label: string
@@ -9,13 +23,100 @@ interface KpiItem {
 
 const isExpanded = ref<boolean>(false)
 
-const kpis: KpiItem[] = [
-  { label: 'Realizado', value: 'R$ 2.684,90', icon: 'check-circle' },
-  { label: 'Forecast', value: 'R$ 3.000,00', icon: 'trending-up' },
-  { label: 'Retiradas', value: 'R$ 0,00', icon: 'arrow-down-circle' },
-  { label: 'Agregado', value: 'R$ 2.684,90', icon: 'layers' },
-  { label: 'Principal', value: 'R$ 23.549,00', icon: 'wallet' }
-]
+// Busca os dados das APIs do Nuxt
+const { data: operacoes } = await useFetch<OperacaoPerformance[]>('/api/relatperformance', {
+  default: () => []
+})
+
+const { data: retiradasDb } = await useFetch<RetiradaDB[]>('/api/retiradas', {
+  default: () => []
+})
+
+const { data: aportesDb } = await useFetch<AporteDB[]>('/api/aportes', {
+  default: () => []
+})
+
+// Formatador de Moeda
+const formatCurrency = (val: number | string) => {
+  const num = typeof val === 'string' ? parseFloat(val) : val
+  if (isNaN(num)) return 'R$ 0,00'
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num)
+}
+
+// 1. Principal (Aportes Acumulados)
+const valorPrincipal = computed(() => {
+  return (aportesDb.value || []).reduce((acc, a) => acc + Number(a.valor || 0), 0)
+})
+
+// 2. Realizado (Resultado Total das Operações)
+const valorRealizado = computed(() => {
+  return (operacoes.value || []).reduce((sum, op) => {
+    const val = op.resIntervaloLiquido !== undefined && op.resIntervaloLiquido !== null
+      ? Number(op.resIntervaloLiquido)
+      : Number(op.resIntervaloBruto || 0)
+    return sum + (isNaN(val) ? 0 : val)
+  }, 0)
+})
+
+// 3. Retiradas (Apenas Concluídas)
+const valorRetiradas = computed(() => {
+  return (retiradasDb.value || [])
+    .filter(r => r.statusTransferencia === 'CONCLUIDO')
+    .reduce((acc, r) => acc + Number(r.valorRetirada || 0), 0)
+})
+
+// 4. Agregado (Capital Total Atual)
+const valorAgregado = computed(() => {
+  return valorPrincipal.value + (valorRealizado.value - valorRetiradas.value)
+})
+
+// 5. Forecast (Meta Mensal Geral = 15% sobre o Capital do Início do Mês Atual)
+const valorForecast = computed(() => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const inicioMesStr = `${year}-${String(month).padStart(2, '0')}-01`
+
+  // Aportes até o início do mês atual
+  const aportesInicioMes = (aportesDb.value || []).reduce((sum, a) => {
+    const dataStr = new Date(a.data_aporte).toISOString().split('T')[0]
+    return dataStr <= inicioMesStr ? sum + Number(a.valor || 0) : sum
+  }, 0)
+
+  // Resultado até o mês anterior
+  const resultadoMesAnterior = (operacoes.value || []).reduce((sum, op) => {
+    if (!op.abertura) return sum
+    const dataOp = new Date(op.abertura).toISOString().split('T')[0]
+    if (dataOp < inicioMesStr) {
+      const val = op.resIntervaloLiquido !== undefined && op.resIntervaloLiquido !== null
+        ? Number(op.resIntervaloLiquido)
+        : Number(op.resIntervaloBruto || 0)
+      return sum + (isNaN(val) ? 0 : val)
+    }
+    return sum
+  }, 0)
+
+  // Retiradas concluídas até o mês anterior
+  const retiradasMesAnterior = (retiradasDb.value || []).reduce((sum, r) => {
+    if (r.statusTransferencia !== 'CONCLUIDO' || !r.created_at) return sum
+    const dataRet = new Date(r.created_at).toISOString().split('T')[0]
+    return dataRet < inicioMesStr ? sum + Number(r.valorRetirada || 0) : sum
+  }, 0)
+
+  const capitalInicioMes = aportesInicioMes + (resultadoMesAnterior - retiradasMesAnterior)
+  
+  // Meta de 15%
+  return capitalInicioMes * 0.15
+})
+
+// Construção Dinâmica dos Cards
+const kpis = computed<KpiItem[]>(() => [
+  { label: 'Realizado', value: formatCurrency(valorRealizado.value), icon: 'check-circle' },
+  { label: 'Forecast', value: formatCurrency(valorForecast.value), icon: 'trending-up' },
+  { label: 'Retiradas', value: formatCurrency(valorRetiradas.value), icon: 'arrow-down-circle' },
+  { label: 'Agregado', value: formatCurrency(valorAgregado.value), icon: 'layers' },
+  { label: 'Principal', value: formatCurrency(valorPrincipal.value), icon: 'wallet' }
+])
 </script>
 
 <template>
@@ -27,9 +128,7 @@ const kpis: KpiItem[] = [
         :key="index"
         :class="[
           'bg-[#dce6d5] border border-[#c4d4b9] p-2 rounded-sm shadow-xs flex flex-col justify-between h-16 md:h-18 transition-all duration-200',
-          /* Configuração de colunas: 3 primeiros (2 cols), 2 últimos (3 cols no mobile / 1 col no PC) */
           index < 3 ? 'col-span-2 md:col-span-1' : 'col-span-3 md:col-span-1',
-          /* Suprime a segunda linha no mobile por padrão se isExpanded for false. No PC (md:) sempre visível */
           index >= 3 && !isExpanded ? 'hidden md:flex' : 'flex'
         ]"
       >

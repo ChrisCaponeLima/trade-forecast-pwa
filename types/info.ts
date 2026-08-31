@@ -5,9 +5,11 @@ export interface InfoGeralItem {
   }
   
   export interface PrincipalItem {
+    id?: string
     data: string
-    valor: string
-    observacoes: string
+    valor: string | number
+    observacoes?: string | null
+    origem?: string | null
   }
   
   export interface LancamentoItem {
