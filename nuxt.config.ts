@@ -2,13 +2,22 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-29',
   pages: true,
-  
+
+  // Ativa a compatibilidade correta do Nuxt 4 com a pasta app/ e server/
+  future: {
+    compatibilityVersion: 4,
+  },
+
+  // Garante a geração das funções serverless na Vercel
+  nitro: {
+    preset: 'vercel'
+  },
+
   modules: [
     '@nuxtjs/tailwindcss',
     '@vite-pwa/nuxt'
   ],
 
-  // Garante que o Nitro/Vercel execute as funções de API em runtime Serverless real
   routeRules: {
     '/api/**': { cache: false, cors: true }
   },
