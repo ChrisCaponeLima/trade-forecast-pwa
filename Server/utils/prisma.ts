@@ -17,14 +17,21 @@ const connectionString = rawUrl
   .replace('channel_binding=require&', '')
   .replace('&channel_binding=require', '')
 
-// 3. Em Serverless (Vercel), maxConnections deve ser baixo (ex: 1) para evitar conexões fantasmas
+// Detecta se está executando em ambiente Vercel Serverless
 const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
 
+// 3. Configura a Pool de conexões tratada para Serverless x Local
 const pool = new pg.Pool({
   connectionString,
-  max: isVercel ? 1 : 10, // Evita estouro e congelamento de pool na Vercel
+  max: isVercel ? 1 : 10,
   idleTimeoutMillis: isVercel ? 1000 : 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000, // Aumentado para tolerar handshake de Serverless
+  allowExitOnIdle: true,
+})
+
+// Tratamento global de erro no pool para prevenir UnhandledPromiseRejection em funções Serverless congeladas
+pool.on('error', (err) => {
+  console.error('[pg.Pool Error]: Conexão inativa encerrada no serverless', err)
 })
 
 const adapter = new PrismaPg(pool)
