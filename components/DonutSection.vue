@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 
 interface OperacaoPerformance {
   abertura?: string
@@ -41,12 +41,28 @@ interface DonutChartConfig {
   }[]
 }
 
-// 1. Busca de Dados Nativos via Nuxt 3
-const { data: operacoes } = await useFetch<OperacaoPerformance[]>('/api/relatperformance', { default: () => [] })
-const { data: retiradasDb } = await useFetch<RetiradaDB[]>('/api/retiradas', { default: () => [] })
-const { data: aportesDb } = await useFetch<AporteDB[]>('/api/aportes', { default: () => [] })
+// 1. Busca Paralela Otimizada com useAsyncData (Evita chamadas em cascata em Serverless)
+const { data: dashboardData } = await useAsyncData('dashboard-metrics', async () => {
+  const [operacoes, retiradasDb, aportesDb] = await Promise.all([
+    $fetch<OperacaoPerformance[]>('/api/relatperformance').catch(() => []),
+    $fetch<RetiradaDB[]>('/api/retiradas').catch(() => []),
+    $fetch<AporteDB[]>('/api/aportes').catch(() => [])
+  ])
+  return {
+    operacoes: operacoes || [],
+    retiradasDb: retiradasDb || [],
+    aportesDb: aportesDb || []
+  }
+}, {
+  default: () => ({ operacoes: [], retiradasDb: [], aportesDb: [] })
+})
 
-// Formatadores
+// Mapeamento seguro das referências
+const operacoes = computed(() => dashboardData.value?.operacoes || [])
+const retiradasDb = computed(() => dashboardData.value?.retiradasDb || [])
+const aportesDb = computed(() => dashboardData.value?.aportesDb || [])
+
+// Formatadores seguros
 const formatCurrency = (val: number) => {
   if (isNaN(val) || !isFinite(val)) return 'R$ 0,00'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -57,18 +73,30 @@ const formatPercent = (val: number) => {
   return `${val.toFixed(1).replace('.', ',')}%`
 }
 
+// Helper seguro para parsing de datas em SSR
+const parseISOToDateStr = (dateVal: string | Date | undefined) => {
+  if (!dateVal) return ''
+  try {
+    const d = new Date(dateVal)
+    if (isNaN(d.getTime())) return ''
+    return d.toISOString().split('T')[0]
+  } catch {
+    return ''
+  }
+}
+
 // -------------------------------------------------------------
 // Cálculos de Métricas Patrimoniais
 // -------------------------------------------------------------
 
 // Principal (Aportes Acumulados)
 const valorPrincipal = computed(() => {
-  return (aportesDb.value || []).reduce((acc, a) => acc + Number(a.valor || 0), 0)
+  return aportesDb.value.reduce((acc, a) => acc + Number(a.valor || 0), 0)
 })
 
-// Realizado Total (Lucro Operacional Liquido Acumulado)
+// Realizado Total (Lucro Operacional Líquido Acumulado)
 const valorRealizado = computed(() => {
-  return (operacoes.value || []).reduce((sum, op) => {
+  return operacoes.value.reduce((sum, op) => {
     const val = op.resIntervaloLiquido !== undefined && op.resIntervaloLiquido !== null
       ? Number(op.resIntervaloLiquido)
       : Number(op.resIntervaloBruto || 0)
@@ -78,8 +106,8 @@ const valorRealizado = computed(() => {
 
 // Retiradas Concluídas
 const valorRetiradasConcluidas = computed(() => {
-  return (retiradasDb.value || [])
-    .filter(r => r.statusTransferencia === 'CONCLUIDO')
+  return retiradasDb.value
+    .filter(r => String(r.statusTransferencia).toUpperCase() === 'CONCLUIDO')
     .reduce((acc, r) => acc + Number(r.valorRetirada || 0), 0)
 })
 
@@ -97,15 +125,14 @@ const metaForecastMes = computed(() => {
   const month = now.getMonth() + 1
   const inicioMesStr = `${year}-${String(month).padStart(2, '0')}-01`
 
-  const aportesInicioMes = (aportesDb.value || []).reduce((sum, a) => {
-    const dataStr = new Date(a.data_aporte).toISOString().split('T')[0]
-    return dataStr <= inicioMesStr ? sum + Number(a.valor || 0) : sum
+  const aportesInicioMes = aportesDb.value.reduce((sum, a) => {
+    const dataStr = parseISOToDateStr(a.data_aporte)
+    return (dataStr && dataStr <= inicioMesStr) ? sum + Number(a.valor || 0) : sum
   }, 0)
 
-  const resultadoMesAnterior = (operacoes.value || []).reduce((sum, op) => {
-    if (!op.abertura) return sum
-    const dataOp = new Date(op.abertura).toISOString().split('T')[0]
-    if (dataOp < inicioMesStr) {
+  const resultadoMesAnterior = operacoes.value.reduce((sum, op) => {
+    const dataOp = parseISOToDateStr(op.abertura)
+    if (dataOp && dataOp < inicioMesStr) {
       const val = op.resIntervaloLiquido !== undefined && op.resIntervaloLiquido !== null
         ? Number(op.resIntervaloLiquido)
         : Number(op.resIntervaloBruto || 0)
@@ -114,10 +141,10 @@ const metaForecastMes = computed(() => {
     return sum
   }, 0)
 
-  const retiradasMesAnterior = (retiradasDb.value || []).reduce((sum, r) => {
-    if (r.statusTransferencia !== 'CONCLUIDO' || !r.created_at) return sum
-    const dataRet = new Date(r.created_at).toISOString().split('T')[0]
-    return dataRet < inicioMesStr ? sum + Number(r.valorRetirada || 0) : sum
+  const retiradasMesAnterior = retiradasDb.value.reduce((sum, r) => {
+    if (String(r.statusTransferencia).toUpperCase() !== 'CONCLUIDO') return sum
+    const dataRet = parseISOToDateStr(r.created_at)
+    return (dataRet && dataRet < inicioMesStr) ? sum + Number(r.valorRetirada || 0) : sum
   }, 0)
 
   const capitalInicioMes = aportesInicioMes + (resultadoMesAnterior - retiradasMesAnterior)
@@ -131,10 +158,9 @@ const realizadoMesAtual = computed(() => {
   const month = now.getMonth() + 1
   const inicioMesStr = `${year}-${String(month).padStart(2, '0')}-01`
 
-  return (operacoes.value || []).reduce((sum, op) => {
-    if (!op.abertura) return sum
-    const dataOp = new Date(op.abertura).toISOString().split('T')[0]
-    if (dataOp >= inicioMesStr) {
+  return operacoes.value.reduce((sum, op) => {
+    const dataOp = parseISOToDateStr(op.abertura)
+    if (dataOp && dataOp >= inicioMesStr) {
       const val = op.resIntervaloLiquido !== undefined && op.resIntervaloLiquido !== null
         ? Number(op.resIntervaloLiquido)
         : Number(op.resIntervaloBruto || 0)
@@ -180,8 +206,8 @@ const charts = computed<DonutChartConfig[]>(() => {
   const pctMetaAtingida = metaTotal > 0 ? (realizadoMes / metaTotal) * 100 : 0
 
   const d1Slices = buildDonutSlices([
-    { label: 'Realizado no Mês', value: realizadoMes, color: '#10b981' }, // Esmeralda
-    { label: 'Faltante p/ Meta', value: restanteMeta, color: '#e2e8f0' }  // Slate Suave
+    { label: 'Realizado no Mês', value: realizadoMes, color: '#10b981' },
+    { label: 'Faltante p/ Meta', value: restanteMeta, color: '#e2e8f0' }
   ])
 
   // --- Donut 2: Composição da Estrutura de Capital ---
@@ -189,8 +215,8 @@ const charts = computed<DonutChartConfig[]>(() => {
   const lucroRetido = Math.max(0, valorRealizado.value - valorRetiradasConcluidas.value)
 
   const d2Slices = buildDonutSlices([
-    { label: 'Capital Principal (Aportes)', value: principal, color: '#475569' }, // Slate Escuro
-    { label: 'Lucro Acumulado Retido', value: lucroRetido, color: '#0ea5e9' }      // Sky Blue
+    { label: 'Capital Principal (Aportes)', value: principal, color: '#475569' },
+    { label: 'Lucro Acumulado Retido', value: lucroRetido, color: '#0ea5e9' }
   ])
 
   // --- Donut 3: Gestão de Liquidez e Distribuição ---
@@ -198,8 +224,8 @@ const charts = computed<DonutChartConfig[]>(() => {
   const saldoEmHaver = Math.max(0, valorRealizado.value - valorRetiradasConcluidas.value)
 
   const d3Slices = buildDonutSlices([
-    { label: 'Retiradas Concluídas', value: retiradas, color: '#f59e0b' }, // Âmbar
-    { label: 'Saldo em Haver (Disponível)', value: saldoEmHaver, color: '#6366f1' } // Índigo
+    { label: 'Retiradas Concluídas', value: retiradas, color: '#f59e0b' },
+    { label: 'Saldo em Haver (Disponível)', value: saldoEmHaver, color: '#6366f1' }
   ])
 
   return [
