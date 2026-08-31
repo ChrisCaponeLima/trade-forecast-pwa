@@ -4,8 +4,8 @@ export default defineNuxtConfig({
   pages: true,
   
   modules: [
-    '@nuxtjs/tailwindcss'//,
-    //'@vite-pwa/nuxt'
+    '@nuxtjs/tailwindcss',
+    '@vite-pwa/nuxt'
   ],
 
   pwa: {
@@ -46,6 +46,7 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    prismaDatabaseUrl: process.env.PRISMA_DATABASE_URL,
     databaseUrl: process.env.DATABASE_URL
   }
 })
