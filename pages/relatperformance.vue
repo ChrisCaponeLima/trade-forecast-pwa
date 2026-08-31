@@ -10,6 +10,11 @@ const filtroAtivo = ref('')
 const filtroDataInicio = ref('')
 const filtroDataFim = ref('')
 
+// Estados Reativos para Importação CSV
+const isUploading = ref(false)
+const importMessage = ref('')
+const importError = ref(false)
+
 // Transforma os estados em query reativa para o useFetch
 const queryParams = computed(() => {
   const params: Record<string, string> = {}
@@ -24,6 +29,44 @@ const { data: operacoes, pending, error, refresh } = await useFetch<OperacaoPerf
   default: () => []
 })
 
+// Função para Importar CSV
+const handleFileUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (!file) return
+
+  if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
+    importMessage.value = 'Por favor, selecione um arquivo no formato .csv'
+    importError.value = true
+    return
+  }
+
+  isUploading.value = true
+  importMessage.value = ''
+  importError.value = false
+
+  try {
+    const csvContent = await file.text()
+
+    const response = await $fetch<{ success: boolean; importedCount: number }>('/api/relatperformance/import', {
+      method: 'POST',
+      body: { csvContent }
+    })
+
+    if (response.success) {
+      importMessage.value = `Relatório atualizado com sucesso! ${response.importedCount} operações importadas.`
+      await refresh()
+    }
+  } catch (err: any) {
+    importError.value = true
+    importMessage.value = err.data?.statusMessage || 'Erro ao importar o arquivo CSV.'
+  } finally {
+    isUploading.value = false
+    target.value = ''
+  }
+}
+
 // Limpar Filtros
 const limparFiltros = () => {
   filtroAtivo.value = ''
@@ -36,7 +79,7 @@ const formatCurrency = (val: number) => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL'
-  }).format(val)
+  }).format(val || 0)
 }
 
 const formatDate = (dateString: string | Date) => {
@@ -52,7 +95,7 @@ const formatDate = (dateString: string | Date) => {
 
 // Métricas Agregadas
 const totalResultadoBruto = computed(() => {
-  return operacoes.value.reduce((acc, op) => acc + Number(op.resIntervaloBruto), 0)
+  return operacoes.value.reduce((acc, op) => acc + Number(op.resIntervaloBruto || 0), 0)
 })
 
 const totalContratos = computed(() => {
@@ -89,6 +132,42 @@ const totalResultadoLiquido = computed(() => {
       </div>
     </div>
 
+    <!-- Painel de Importação CSV -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Importar Relatório (Profit / Nelogica)</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Substitui os dados antigos ao enviar o arquivo .CSV exportado</p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
+        <label 
+          class="w-full sm:w-auto text-center cursor-pointer px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center space-x-2"
+          :class="{ 'opacity-50 pointer-events-none': isUploading }"
+        >
+          <span>{{ isUploading ? 'Substituindo dados...' : '↑ Enviar Novo CSV' }}</span>
+          <input 
+            type="file" 
+            accept=".csv" 
+            class="hidden" 
+            @change="handleFileUpload" 
+            :disabled="isUploading"
+          />
+        </label>
+      </div>
+    </div>
+
+    <!-- Feedback da Importação -->
+    <div 
+      v-if="importMessage" 
+      :class="[
+        'p-3 rounded-lg border text-xs font-medium flex items-center justify-between',
+        importError ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+      ]"
+    >
+      <span>{{ importMessage }}</span>
+      <button @click="importMessage = ''" class="text-slate-400 hover:text-slate-600 ml-2 font-bold">✕</button>
+    </div>
+
     <!-- Painel de Filtros -->
     <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
       <div class="flex justify-between items-center">
@@ -108,7 +187,7 @@ const totalResultadoLiquido = computed(() => {
           <input 
             v-model="filtroAtivo" 
             type="text" 
-            placeholder="Ex: WIN, WDO, WINQ24" 
+            placeholder="Ex: WIN, WDO, WINQ26" 
             class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md focus:outline-none focus:border-slate-500 uppercase font-mono"
           />
         </div>
@@ -219,10 +298,10 @@ const totalResultadoLiquido = computed(() => {
                   {{ formatCurrency(op.resIntervaloBruto) }}
                 </td>
                 <td class="p-3 md:p-4 text-right font-medium text-rose-600 whitespace-nowrap">
-                  -{{ formatCurrency(op.taxaOperacao) }}
+                  -{{ formatCurrency(op.taxaOperacao || 0) }}
                 </td>
-                <td :class="['p-3 md:p-4 text-right font-bold whitespace-nowrap', op.resIntervaloLiquido >= 0 ? 'text-emerald-700' : 'text-rose-600']">
-                  {{ formatCurrency(op.resIntervaloLiquido) }}
+                <td :class="['p-3 md:p-4 text-right font-bold whitespace-nowrap', (op.resIntervaloLiquido || 0) >= 0 ? 'text-emerald-700' : 'text-rose-600']">
+                  {{ formatCurrency(op.resIntervaloLiquido || 0) }}
                 </td>
               </tr>
               <tr v-if="operacoes.length === 0">
