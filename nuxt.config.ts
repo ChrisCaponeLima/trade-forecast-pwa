@@ -1,22 +1,20 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
+// nuxt.config.ts (na RAIZ do projeto)
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-29',
-  pages: true, // Força a ativação do roteador do Nuxt
+  pages: true,
   
-  // Módulos essenciais do projeto
   modules: [
     '@nuxtjs/tailwindcss',
     '@vite-pwa/nuxt'
   ],
 
-  // Configuração do PWA (Progressive Web App)
   pwa: {
     registerType: 'autoUpdate',
     manifest: {
       name: 'Gestão de Retiradas & Forecast',
       short_name: 'ForecastApp',
       description: 'Sistema de gestão de forecast e retiradas semanais (Chris & Vânia)',
-      theme_color: '#0f172a', // Tom dark (slate-900)
+      theme_color: '#0f172a',
       background_color: '#0f172a',
       display: 'standalone',
       orientation: 'portrait',
@@ -47,7 +45,6 @@ export default defineNuxtConfig({
     }
   },
 
-  // Suporte a variáveis de ambiente (.env)
   runtimeConfig: {
     databaseUrl: process.env.DATABASE_URL
   }
