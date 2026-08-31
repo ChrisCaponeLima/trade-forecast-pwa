@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
-// Obtém a URL do runtimeConfig do Nuxt ou do ambiente process.env
+// 1. Obtém a string de conexão tratando a runtimeConfig do Nuxt e variáveis
 const config = useRuntimeConfig()
 const rawUrl =
   (config.prismaDatabaseUrl as string) ||
@@ -12,13 +12,21 @@ const rawUrl =
   process.env.DATABASE_URL ||
   ''
 
-// Sanitiza a URL para evitar o erro do channel_binding do Neon no driver Serverless
+// 2. Remove parâmetros que causam falhas no Neon Serverless
 const connectionString = rawUrl
   .replace('channel_binding=require&', '')
   .replace('&channel_binding=require', '')
 
-// Configura a pool de conexão do PostgreSQL
-const pool = new pg.Pool({ connectionString })
+// 3. Em Serverless (Vercel), maxConnections deve ser baixo (ex: 1) para evitar conexões fantasmas
+const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+const pool = new pg.Pool({
+  connectionString,
+  max: isVercel ? 1 : 10, // Evita estouro e congelamento de pool na Vercel
+  idleTimeoutMillis: isVercel ? 1000 : 30000,
+  connectionTimeoutMillis: 5000,
+})
+
 const adapter = new PrismaPg(pool)
 
 const globalForPrisma = globalThis as unknown as {
