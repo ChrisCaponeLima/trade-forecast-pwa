@@ -4,8 +4,8 @@ export default defineNuxtConfig({
   pages: true,
   
   modules: [
-    '@nuxtjs/tailwindcss',
-    '@vite-pwa/nuxt'
+    '@nuxtjs/tailwindcss'//,
+    //'@vite-pwa/nuxt'
   ],
 
   pwa: {
@@ -33,15 +33,15 @@ export default defineNuxtConfig({
       ]
     },
     workbox: {
-      navigateFallback: '/',
+      navigateFallback: undefined,
       globPatterns: ['**/*.{js,css,html,png,svg,ico}']
     },
     client: {
       installPrompt: true,
     },
     devOptions: {
-      enabled: true,
-      type: 'module'
+      enabled: false, // Não gera o dev-sw.js em modo dev
+      suppressWarnings: true
     }
   },
 

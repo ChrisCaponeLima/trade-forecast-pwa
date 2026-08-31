@@ -1,19 +1,10 @@
-// server/utils/prisma.ts
-import { PrismaClient } from '@prisma/client'
+// prisma.config.ts (na RAIZ do projeto)
+import { defineConfig } from '@prisma/config'
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL
-      }
-    },
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error']
-  })
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+export default defineConfig({
+  earlyAccess: true,
+  schema: 'prisma/schema.prisma',
+  datasource: {
+    url: process.env.DATABASE_URL
+  }
+})
