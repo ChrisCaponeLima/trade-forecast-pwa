@@ -1,6 +1,7 @@
+// server/api/retiradas.get.ts (ou o caminho equivalente na pasta server/api/)
 import { prisma } from '~/server/utils/prisma'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   try {
     const retiradas = await prisma.retiradas.findMany({
       orderBy: {
@@ -18,9 +19,12 @@ export default defineEventHandler(async () => {
       statusTransferencia: r.status_transferencia
     }))
   } catch (error: any) {
+    // Exibe o erro legível no log da Vercel e retorna o statusCode 500 estruturado
+    console.error('[API Retiradas Error]:', error)
+    
     throw createError({
       statusCode: 500,
-      statusMessage: `Erro ao buscar retiradas no banco: ${error.message}`
+      statusMessage: `Erro ao buscar retiradas no banco: ${error?.message || String(error)}`
     })
   }
 })
