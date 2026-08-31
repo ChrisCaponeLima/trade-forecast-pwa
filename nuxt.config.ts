@@ -8,6 +8,11 @@ export default defineNuxtConfig({
     '@vite-pwa/nuxt'
   ],
 
+  // Garante que o Nitro/Vercel execute as funções de API em runtime Serverless real
+  routeRules: {
+    '/api/**': { cache: false, cors: true }
+  },
+
   pwa: {
     registerType: 'autoUpdate',
     manifest: {
@@ -40,7 +45,7 @@ export default defineNuxtConfig({
       installPrompt: true,
     },
     devOptions: {
-      enabled: false, // Não gera o dev-sw.js em modo dev
+      enabled: false,
       suppressWarnings: true
     }
   },
